@@ -1,0 +1,34 @@
+{
+  "publishers": [
+    {
+      "id": "lww",
+      "name": "Lippincott Williams & Wilkins (LWW)",
+      "url": "https://journals.lww.com/",
+      "articleBodySelector": {
+        "type": "section_id",
+        "value": "ArticleBody"
+      },
+      "notes": "JBJS (Journal of Bone and Joint Surgery) など LWW傘下の学術出版社"
+    },
+    {
+      "id": "wiley",
+      "name": "Wiley",
+      "url": "https://onlinelibrary.wiley.com/",
+      "articleBodySelector": {
+        "type": "css",
+        "value": "section.article-section.article-section__full"
+      },
+      "notes": "Wiley Online Library - abstractの後の本文セクションから抽出"
+    }
+  ],
+  "description": "Publisher-specific HTML selectors for article body extraction",
+  "usage": {
+    "selector_type_options": [
+      "section_id - HTMLセクション要素のID",
+      "class - HTMLクラス名",
+      "xpath - XPath式",
+      "css - CSSセレクタ"
+    ],
+    "example": "publishers_config.json から publisher IDを指定 →対応するselectorを取得 → ブラウザのJavaScriptで記事本文を抽出"
+  }
+}

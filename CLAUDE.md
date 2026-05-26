@@ -1,107 +1,170 @@
-# Web Clipping Workflow - Obsidian論文自動取得システム
+# MHTML to Obsidian Markdown Extraction System
 
-## 目的
-出版社サイトの論文ページ（paywallで保護されているページ含む）から本文コンテンツを自動的に抽出し、Obsidianのノートに統合する。
+## Project Overview
+Automated system to extract academic journal articles from MHTML files (saved web pages) and format them as Markdown with embedded images and references, integrated into Obsidian notes.
 
-## システムの構成
+## Current Status: ✅ COMPLETE
 
-### 1. 環境セットアップ
-- **ツール**: Claude in Chrome（ブラウザ自動化）
-- **対応サイト**: JBJS（Journal of Bone and Joint Surgery）など、HTMLセクション構造を持つ出版社サイト
-- **出力形式**: Markdown with embedded images
+System successfully extracts and processes Wiley journal articles from MHTML format.
 
-### 2. 抽出プロセス
+## System Architecture
 
-#### ステップ1: ターゲットセクションの取得
-```
-対象: <section id="ArticleBody">
-含まれる内容: Introduction → Materials & Methods → Results → Discussion → Conclusion
-含まれない内容: Abstract（別セクション）
-```
+### Main Script: extract_with_images.py
 
-#### ステップ2: 画像URLの抽出
-- **方法**: ブラウザJavaScript実行で、HTML `data-src` 属性から画像URLを取得
-- **形式**: `data-src="https://images.journals.lww.com/jbjsjournal/..."` から抽出
-- **出力形式**: `![figN](URL)` Markdown形式
+**Purpose:** Extract full article body, images, and references from MHTML files and append to Obsidian notes.
 
-**例:**
-```markdown
-![fig1](https://images.journals.lww.com/jbjsjournal/ArticleViewerPreview.00004623-202506040-00004.fig1.jpeg)
-Study design summary.
-```
+**Key Components:**
 
-#### ステップ3: テキスト本体の整形
-- セクションヘッダーを Markdown `##` または `###` に変換
-- 図表のキャプションを画像URLの直後に配置
-- 参考文献番号（上付き数字）は保持
+1. **extract_mhtml_html_content(mhtml_path)** 
+   - Decodes MHTML file from email/MIME format
+   - Uses email.message_from_binary_file() to parse MHTML structure
+   - Extracts text/html part and returns decoded content
 
-### 3. Obsidian ノート統合
+2. **extract_body_content(section)**
+   - Iterates through h2, h3, p, img elements preserving order
+   - Converts headings to Markdown (## and ###)
+   - Embeds images as Markdown with working URLs
+   - Returns markdown string and image list
 
-#### ファイル構造
-```
-Kamenaga2021.md
-├── YAML frontmatter
-├── #1 AI要約
-├── #2 Citation
-├── #3 PDF
-├── #4 Main Text （最終的にこれに置き換わる予定）
-└── #5 Full Article Text ← ここに本文を追記
+3. **extract_references(soup)**
+   - Finds article-section__references section
+   - Extracts ul.rlist contents
+   - Removes unwanted keywords: View, Google Scholar, PubMed, Web of Science, Find Full Text, CAS, Scopus, CrossRef
+   - Returns cleaned reference list
+
+4. **update_obsidian_file(obsidian_path, markdown_content)**
+   - Finds # 4 Main Text section in Obsidian note
+   - Replaces section content only (preserves heading)
+   - Updates file with extracted content
+
+## Usage
+
+```bash
+python3 extract_with_images.py <mhtml_file> <obsidian_file>
+
+# Example:
+python3 extract_with_images.py Killian2019.mhtml "/path/to/Killian2019.md"
 ```
 
-#### 置き換え方法
-1. 既存の `#5 Full Article Text` セクションを置き換え（コンテンツのみ）
-2. 既存メタデータ（インポート日時等）は保持
-3. Markdown形式で図を含める
+## Test Results: Killian2019.md
 
-## 実装例：Kamenaga2021.md
+**Journal:** Journal of Orthopaedic Research (Wiley)
+**Article:** Novel model for the induction of postnatal murine hip deformity
+**MHTML File Size:** 7.2 MB
 
-**記事**: Experimentally Induced Femoroacetabular Impingement Results in Hip Osteoarthritis
-**出版社**: JBJS (Journal of Bone and Joint Surgery)
-**著者**: Kamenaga, Tomoyuki et al.
-**出版年**: 2025/06/04
+### Extraction Results
+- Body text: 34,643 characters
+- Images: 8 with working Wiley CDN URLs
+- References: 58 items
+- Total output: 46,018 characters of Markdown
+- Status: Successfully updated Obsidian file
 
-### 処理内容
-1. JBJS論文ページにアクセス
-2. `#ArticleBody` セクションのみを抽出
-3. 8つの図を Markdown 形式で埋め込み
-4. Obsidian ノートの #5 セクションに統合
+## Expected HTML Structure (Wiley)
 
-### ファイル出力
-- **記事本体**: `article_body_only.md`
-- **ターゲット**: `C:\Users\a2189\Dropbox\obsidian\10_article\RXFP1\Kamenaga2021.md`
+```html
+<section class="article-section__full">
+  <h2>Methods</h2>
+  <p>Article text...</p>
+  <img src="https://..." alt="Figure caption" />
+  ...
+</section>
 
-## トラブルシューティング
+<section class="article-section__references">
+  <ul class="rlist">
+    <li>1. Author, Year. Title. Journal...</li>
+    ...
+  </ul>
+</section>
+```
 
-### 画像が表示されない
-- **原因**: lazy-loading画像で `src` 属性が空
-- **解決**: JavaScriptで `data-src` 属性を抽出して Markdown に変換
+## Implementation Details
 
-### ページがJavaScriptで動的レンダリング
-- **原因**: `get_page_text` では HTML 構造が取得できない
-- **解決**: Claude in Chrome で実際のブラウザコンテキストで実行
+### MHTML Parsing
+- MHTML files are email/MIME archives containing HTML and embedded resources
+- Script extracts HTML part using email module
+- Decodes from UTF-8 with error tolerance
 
-### Abstractが含まれてしまう
-- **原因**: セクションIDの誤認識
-- **解決**: `<section id="ArticleBody">` を厳密に指定して、Abstract（別セクション）を除外
+### Element Ordering
+- Uses find_all(['h2', 'h3', 'p', 'img']) to preserve document flow
+- Images maintain position relative to text
 
-## 将来の展開
+### Reference Cleaning
+- Removes publisher links and metadata keywords
+- Collapses whitespace
+- Filters items < 20 characters
 
-1. **複数記事への対応**
-   - `Kamenaga2021.md` と同じ構造の他の論文にも適用可能
-   
-2. **自動化スクリプト**
-   - 記事URL → Obsidian ノート統合を自動化
-   
-3. **セクション置き換え**
-   - 最終的に `#5 Full Article Text` を削除
-   - `#4 Main Text` に本文を統合
-   
-4. **複数出版社対応**
-   - 他の学術出版社（Nature、Lancet等）への展開
-   - セクション構造の違いに対応
+### Obsidian Integration
+- Regex pattern: `(# 4 Main Text\n)(.*?)(?=\n# 5 |\Z)`
+- Replaces content only, preserves heading and surrounding sections
 
-## 注意事項
+## Files in This Project
 
-- 論文内容の抽出のみ（Abstract は除外）
-- 著作権保護コンテンツには対応していない
-- 出版社サイトの利用規約を遵守
+- `extract_with_images.py` - Main working script
+- `extract_with_images_fixed.py` - Backup copy
+- `process_mhtml_text.py` - Text extraction version (reference)
+- `extract_and_save.py` - HTML generation version (reference)
+- `mhtml_decoded.html` - Temporary decoded HTML for debugging
+
+## Known Limitations
+
+1. **Wiley-Specific**
+   - Configured for Wiley article structure
+   - Needs adjustment for other publishers (LWW, Nature, etc.)
+
+2. **Reference Extraction**
+   - Assumes standard ul.rlist HTML structure
+   - May miss context-specific keywords
+
+3. **Image Handling**
+   - Requires accessible image URLs (external links)
+   - No local image embedding
+
+## Future Enhancements
+
+1. **Multi-Publisher Support**
+   - LWW/Wolters Kluwer
+   - Nature journals
+   - Lancet journals
+
+2. **Advanced Processing**
+   - Tables as Markdown
+   - Better caption association
+   - Footnotes/endnotes
+   - Metadata extraction
+
+3. **Quality Improvements**
+   - Better reference filtering
+   - Image compression/optimization
+   - Supplementary material handling
+
+## Version History
+
+### v1.0 - Final (2026-05-26)
+- Fixed MHTML decoding using email module
+- Fixed reference extraction targeting correct section
+- Implemented proper image positioning in Markdown
+- Successfully tested on Killian2019.mhtml
+
+### Previous Versions
+- Used LangChain MHTMLLoader (issues with decoding)
+- Attempted browser automation (slow)
+- HTML-only extraction (structure issues)
+
+## Troubleshooting
+
+**"Article section not found"**
+- Verify MHTML is from Wiley
+- Check for article-section__full class
+
+**"Reference section not found"**
+- Verify MHTML contains article-section__references
+- Check for ul.rlist elements
+
+**Images not showing in Obsidian**
+- Test image URLs in browser first
+- Ensure Obsidian supports remote images
+- Check for special characters in alt text
+
+---
+Created for: Taichi (a218954@gmail.com)
+Last updated: 2026-05-26
