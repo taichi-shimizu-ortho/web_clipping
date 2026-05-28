@@ -1,72 +1,90 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Extract MHTML with images and references to Markdown"""
+"""Extract article from Wiley URL using Playwright"""
 
 from pathlib import Path
 import re
+import asyncio
 from bs4 import BeautifulSoup
-from email import message_from_binary_file
+from playwright.async_api import async_playwright
 
 
-def extract_mhtml_html_content(mhtml_path: str) -> str:
-    """Extract HTML content from MHTML file"""
-    path = Path(mhtml_path)
-    with open(path, 'rb') as f:
-        msg = message_from_binary_file(f)
+async def extract_from_wiley_url(url: str) -> dict:
+    """Extract article content from Wiley URL using Playwright"""
 
-    for part in msg.walk():
-        if part.get_content_type() == 'text/html':
-            payload = part.get_payload(decode=True)
-            if payload:
-                return payload.decode('utf-8', errors='ignore')
-
-    raise ValueError("HTML part not found in MHTML file")
-
-
-def extract_from_mhtml_with_images(mhtml_path: str) -> dict:
-    """Extract article content from MHTML"""
-    path = Path(mhtml_path)
-    if not path.exists():
-        print(f"FILE NOT FOUND: {mhtml_path}")
-        return {}
-
-    print(f"Loading MHTML: {path.name}")
+    print(f"Loading Wiley article: {url}")
 
     try:
-        html_content = extract_mhtml_html_content(str(path))
-        soup = BeautifulSoup(html_content, 'html.parser')
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
 
-        print("\n" + "=" * 80)
-        print("1. EXTRACTING ARTICLE SECTION")
-        print("=" * 80)
+            print("\nLoading page...")
+            try:
+                await page.goto(url, wait_until="load", timeout=60000)
+            except:
+                print("⚠️ Page load timeout, continuing anyway...")
+                pass
 
-        article_section = soup.find('section', class_='article-section__full')
-        if not article_section:
-            article_section = soup.find('section', class_='article-section')
+            # Wait a bit for JavaScript to execute
+            print("Waiting for content to render...")
+            await page.wait_for_timeout(3000)
 
-        if not article_section:
-            print("Article section not found")
-            return {}
+            # Try to close cookie dialog if present
+            try:
+                await page.click('button[data-testid="cookie-banner-close"]', timeout=5000)
+                print("Closed cookie banner")
+            except:
+                pass
 
-        print("Article section found")
+            # Wait for article content to load
+            print("Waiting for article section...")
+            try:
+                await page.wait_for_selector('section.article-section__full', timeout=20000)
+            except:
+                print("⚠️ Article section timeout, attempting to extract anyway...")
 
-        body_content = extract_body_content(article_section)
-        print(f"Body content: {len(body_content['markdown'])} chars")
-        print(f"Images found: {len(body_content['images'])}")
+            # Get page content
+            html_content = await page.content()
+            await browser.close()
 
-        print("\n" + "=" * 80)
-        print("2. EXTRACTING REFERENCES")
-        print("=" * 80)
+            print("✅ Page loaded successfully")
 
-        references = extract_references(soup)
-        print(f"References found: {len(references)}\n")
+            soup = BeautifulSoup(html_content, 'html.parser')
 
-        return {
-            'success': True,
-            'body_markdown': body_content['markdown'],
-            'images': body_content['images'],
-            'references': references
-        }
+            print("\n" + "=" * 80)
+            print("1. EXTRACTING ARTICLE SECTION")
+            print("=" * 80)
+
+            article_section = soup.find('section', class_='article-section__full')
+            if not article_section:
+                print("Article section not found")
+                return {}
+
+            print("Article section found")
+
+            # Extract base URL (domain + /cms path)
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+
+            body_content = await extract_body_content_with_images(page, article_section, base_url)
+            print(f"Body content: {len(body_content['markdown'])} chars")
+            print(f"Images found: {len(body_content['images'])}")
+
+            print("\n" + "=" * 80)
+            print("2. EXTRACTING REFERENCES")
+            print("=" * 80)
+
+            references = extract_references(soup)
+            print(f"References found: {len(references)}\n")
+
+            return {
+                'success': True,
+                'body_markdown': body_content['markdown'],
+                'images': body_content['images'],
+                'references': references
+            }
 
     except Exception as e:
         print(f"ERROR: {e}")
@@ -75,8 +93,8 @@ def extract_from_mhtml_with_images(mhtml_path: str) -> dict:
         return {'success': False}
 
 
-def extract_body_content(section) -> dict:
-    """Extract body text and images in order"""
+async def extract_body_content_with_images(page, section, base_url: str) -> dict:
+    """Extract body text and images using JavaScript for correct URLs"""
     markdown_lines = []
     images = []
 
@@ -97,12 +115,25 @@ def extract_body_content(section) -> dict:
                 markdown_lines.append(f"{text}\n")
 
         elif element.name == 'img':
+            # Try to get src from element
             src = element.get('src', '')
+            data_src = element.get('data-src', '')
+            alt = element.get('alt', 'figure')
+
+            # Use data-src if src is not valid, or if src looks like a placeholder
+            if data_src and (not src or 'placeholder' in src.lower() or 'data:' in src):
+                src = data_src
+
+            # Convert relative URLs to absolute URLs
             if src:
-                alt = element.get('alt', 'figure')
-                img_markdown = f"![{alt}]({src})\n"
-                markdown_lines.append(img_markdown)
-                images.append({'src': src, 'alt': alt})
+                if src.startswith('/'):
+                    # Relative URL - add base domain
+                    src = base_url.rstrip('/') + src
+
+                if 'http' in src:  # Only use if it's a valid URL
+                    img_markdown = f"![{alt}]({src})\n"
+                    markdown_lines.append(img_markdown)
+                    images.append({'src': src, 'alt': alt})
 
     return {
         'markdown': ''.join(markdown_lines),
@@ -180,17 +211,17 @@ def update_obsidian_file(obsidian_path: str, markdown_content: str) -> bool:
         return False
 
 
-if __name__ == '__main__':
+async def main():
     import sys
 
     if len(sys.argv) < 3:
-        print("Usage: python extract_with_images.py <mhtml_file> <obsidian_file>")
+        print("Usage: python extract_from_url.py <url> <obsidian_file>")
         sys.exit(1)
 
-    mhtml_path = sys.argv[1]
+    url = sys.argv[1]
     obsidian_path = sys.argv[2]
 
-    result = extract_from_mhtml_with_images(mhtml_path)
+    result = await extract_from_wiley_url(url)
 
     if result.get('success'):
         print("=" * 80)
@@ -218,3 +249,7 @@ if __name__ == '__main__':
             print("=" * 80)
     else:
         print("Extraction failed")
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
