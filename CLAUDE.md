@@ -37,13 +37,21 @@ System successfully extracts and processes Wiley journal articles from MHTML for
    - Replaces section content only (preserves heading)
    - Updates file with extracted content
 
+## Environment
+
+This project uses **uv** as the Python package manager and runner.
+
+- Always run scripts with `uv run python` instead of `python` or `python3`
+- Install dependencies with `uv pip install` instead of `pip install`
+- Virtual environment is located at `.venv/`
+
 ## Usage
 
 ```bash
-python3 extract_with_images.py <mhtml_file> <obsidian_file>
+uv run python extract_with_images.py <mhtml_file> <obsidian_file>
 
 # Example:
-python3 extract_with_images.py Killian2019.mhtml "/path/to/Killian2019.md"
+uv run python extract_with_images.py Killian2019.mhtml "/path/to/Killian2019.md"
 ```
 
 ## Test Results: Killian2019.md

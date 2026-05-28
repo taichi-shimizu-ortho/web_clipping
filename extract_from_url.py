@@ -23,7 +23,7 @@ async def extract_from_wiley_url(url: str) -> dict:
             try:
                 await page.goto(url, wait_until="load", timeout=60000)
             except:
-                print("⚠️ Page load timeout, continuing anyway...")
+                print("WARNING: Page load timeout, continuing anyway...")
                 pass
 
             # Wait a bit for JavaScript to execute
@@ -42,13 +42,13 @@ async def extract_from_wiley_url(url: str) -> dict:
             try:
                 await page.wait_for_selector('section.article-section__full', timeout=20000)
             except:
-                print("⚠️ Article section timeout, attempting to extract anyway...")
+                print("WARNING: Article section timeout, attempting to extract anyway...")
 
             # Get page content
             html_content = await page.content()
             await browser.close()
 
-            print("✅ Page loaded successfully")
+            print("OK: Page loaded successfully")
 
             soup = BeautifulSoup(html_content, 'html.parser')
 
