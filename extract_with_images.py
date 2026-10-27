@@ -14,16 +14,23 @@ def extract_mhtml_html_content(mhtml_path: str) -> str:
     with open(path, 'rb') as f:
         msg = message_from_binary_file(f)
 
+    html_parts = []
     for part in msg.walk():
         if part.get_content_type() == 'text/html':
             payload = part.get_payload(decode=True)
             if payload:
-                return payload.decode('utf-8', errors='ignore')
+                html = payload.decode('utf-8', errors='ignore')
+                html_parts.append(html)
+                candidate = BeautifulSoup(html, 'html.parser')
+                if candidate.select_one('section.article-section__full, meta[name="citation_pii"]'):
+                    return html
 
+    if html_parts:
+        return html_parts[0]
     raise ValueError("HTML part not found in MHTML file")
 
 
-def extract_from_mhtml_with_images(mhtml_path: str) -> dict:
+def extract_from_mhtml_with_images(mhtml_path: str, assets_dir=None, link_root=None) -> dict:
     """Extract article content from MHTML"""
     path = Path(mhtml_path)
     if not path.exists():
@@ -35,6 +42,10 @@ def extract_from_mhtml_with_images(mhtml_path: str) -> dict:
     try:
         html_content = extract_mhtml_html_content(str(path))
         soup = BeautifulSoup(html_content, 'html.parser')
+
+        if soup.select_one('meta[name="citation_pii"]'):
+            from extract_sciencedirect import extract_sciencedirect
+            return extract_sciencedirect(mhtml_path, assets_dir=assets_dir, link_root=link_root)
 
         print("\n" + "=" * 80)
         print("1. EXTRACTING ARTICLE SECTION")
@@ -190,7 +201,10 @@ if __name__ == '__main__':
     mhtml_path = sys.argv[1]
     obsidian_path = sys.argv[2]
 
-    result = extract_from_mhtml_with_images(mhtml_path)
+    note_path = Path(obsidian_path)
+    result = extract_from_mhtml_with_images(
+        mhtml_path, assets_dir=note_path.parent / (note_path.stem + '_assets'),
+        link_root=note_path.parent)
 
     if result.get('success'):
         print("=" * 80)

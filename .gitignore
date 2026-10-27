@@ -1,0 +1,7 @@
+.venv/
+.uv-cache/
+__pycache__/
+*.pyc
+tmp/
+output/
+Li 2026.mhtml

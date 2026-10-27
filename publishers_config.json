@@ -1,6 +1,13 @@
 {
   "publishers": [
     {
+      "id": "sciencedirect",
+      "name": "Elsevier ScienceDirect",
+      "url": "https://www.sciencedirect.com/",
+      "articleBodySelector": {"type": "css", "value": "#body"},
+      "notes": "Saved full-text MHTML: use extract_sciencedirect.py; network fetching is not implemented."
+    },
+    {
       "id": "lww",
       "name": "Lippincott Williams & Wilkins (LWW)",
       "url": "https://journals.lww.com/",
